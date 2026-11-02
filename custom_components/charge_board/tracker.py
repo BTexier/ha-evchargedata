@@ -110,10 +110,11 @@ class SessionTracker:
     def feed(self, sample: Sample, vehicle_id: str | None) -> Session | None:
         """Process one sample; return the session it finishes (if kept), else None."""
         prev = self._last
-        if prev is not None and sample.t <= prev.t:
-            return None  # duplicate or out of order
+        if prev is not None and sample.t < prev.t:
+            return None  # out of order
         self._last = sample
-        if prev is not None:
+        # Same instant (listeners run eagerly, one per entity): keep the newer states, no interval.
+        if prev is not None and sample.t > prev.t:
             self._interval(prev, sample, vehicle_id)
             if sample.t - prev.t <= 2 * TICK_SECONDS:
                 self._ref_kwh += _trapezoid(prev, sample)

@@ -505,3 +505,14 @@ def test_odometer_start_and_end_follow_the_session():
     (done,) = run(make_tracker(), at(20, 50), at(23, 40), make)
     assert done.odometer_start == 1000.0
     assert done.odometer_end == 1012.0
+
+
+def test_same_instant_reading_keeps_the_newer_states():
+    """HA runs listeners eagerly: power and plug change at the same instant, two readings."""
+    tr = make_tracker()
+    t = at(22)
+    tr.feed(Sample(t=t, power_w=2000, energy_kwh=None, plugged=False), "twingo")
+    tr.feed(Sample(t=t, power_w=2000, energy_kwh=None, plugged=True), "twingo")
+    assert [e.kind for e in tr.pop_events()] == ["plugged"]
+    tr.feed(Sample(t=t + 30, power_w=2000, energy_kwh=None, plugged=True), "twingo")
+    assert tr.current is not None and tr.current.plugged_at == t
