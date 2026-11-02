@@ -61,12 +61,31 @@ class Session:
                 d[k] = {b: TariffSlice(**_known(TariffSlice, v)) for b, v in d[k].items()}
         if "curve" in d:
             d["curve"] = [CurvePoint(**_known(CurvePoint, p)) for p in d["curve"]]
-        return cls(**d)
+        s = cls(**d)
+        if "bands" not in d:
+            # Stored before bands: seed them so energy added later (merge, a charge resumed
+            # after the upgrade's restart) never leaves this energy out of the bands.
+            s.bands = legacy_bands(s)
+        return s
 
 
 def band_key(day: str | None, off_peak: bool | None) -> str:
     """Tariff band: day type (e.g. Tempo colour) x off-peak / peak, each part optional."""
     return f"{day or ''}|{'hc' if off_peak else 'hp' if off_peak is False else ''}"
+
+
+def legacy_bands(s: Session) -> dict[str, TariffSlice]:
+    """Bands of a session recorded without them: its off-peak / peak slices, or its whole
+    energy without an off-peak source."""
+    if s.energy_kwh <= 0:
+        return {}
+    if not s.has_off_peak_source:
+        return {band_key(None, None): TariffSlice(s.energy_kwh, s.cost)}
+    return {
+        band_key(None, flag): TariffSlice(part.kwh, part.cost)
+        for flag, part in ((True, s.off_peak), (False, s.peak))
+        if part.kwh > 0
+    }
 
 
 def _known(cls: type, d: dict) -> dict:

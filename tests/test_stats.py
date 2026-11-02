@@ -168,3 +168,15 @@ def test_unpriced_sessions_add_no_band_cost():
 def test_total_row_sums_band_costs():
     rows = month_rows([s(OCT_10), s(ts(2026, 11, 3, 22))], ["2026-10", "2026-11"], {}, PARIS)
     assert total_row(rows)["band_cost"] == pytest.approx({"|hc": 2.52, "|hp": 0.28})
+
+
+def test_merging_a_legacy_session_keeps_every_euro_in_the_bands():
+    from custom_components.charge_board.corrections import merge_sessions
+
+    legacy = Session.from_dict(
+        {k: v for k, v in s(OCT_10, cost=2.0).to_dict().items() if k != "bands"}
+    )  # stored before 0.6.0
+    new = s(OCT_20, kwh=5.0, cost=1.0, bands={"Bleu|hc": TariffSlice(5.0, 1.0)})
+    merged = merge_sessions(legacy, new)
+    (row,) = month_rows([merged], ["2026-10"], {}, PARIS)
+    assert sum(row["band_cost"].values()) == pytest.approx(row["cost"]) == pytest.approx(3.0)

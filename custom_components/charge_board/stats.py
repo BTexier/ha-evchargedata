@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, tzinfo
 
-from .model import Session, TariffSlice, band_key
+from .model import Session, TariffSlice, legacy_bands
 
 
 def local_month(t: float, tz: tzinfo) -> str:
@@ -35,11 +35,7 @@ def _ratios(row: dict) -> None:
 def session_bands(s: Session) -> dict[str, TariffSlice]:
     """The session's tariff bands; sessions recorded before them: their off-peak / peak slices
     (or the whole energy without an off-peak source)."""
-    if s.bands:
-        return s.bands
-    if not s.has_off_peak_source:
-        return {band_key(None, None): TariffSlice(s.energy_kwh, s.cost)}
-    return {band_key(None, True): s.off_peak, band_key(None, False): s.peak}
+    return s.bands or legacy_bands(s)
 
 
 def _band_cost(sessions: list[Session]) -> dict[str, float]:
