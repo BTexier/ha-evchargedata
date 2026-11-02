@@ -20,6 +20,7 @@
           "off_peak_price": "Prix heures creuses (par kWh)",
           "peak_price": "Prix heures pleines (par kWh)",
           "off_peak_entity": "Heures creuses maintenant (capteur binaire)",
+          "day_type_entity": "Type de jour (ex. couleur Tempo)",
           "off_peak_windows": "Plages heures creuses",
           "overview_style": "Style de l'aperçu",
           "notify_service": "Téléphone à notifier",
@@ -31,7 +32,8 @@
           "price_entity": "Prioritaire sur les prix fixes.",
           "off_peak_windows": "Par exemple 22:00-06:00, plusieurs séparées par des virgules. Ignorées si un capteur binaire heures creuses est choisi.",
           "notify_service": "L'application Home Assistant de ce téléphone reçoit le branchement, le démarrage, l'objectif atteint et le débranchement (avec le résumé de la session). Vide : aucune notification ; les événements charge_board_* sont émis quand même.",
-          "fuel_price_entity": "Par exemple une station de l'intégration Prix Carburant. Prioritaire sur le prix fixe."
+          "fuel_price_entity": "Par exemple une station de l'intégration Prix Carburant. Prioritaire sur le prix fixe.",
+          "day_type_entity": "Facultatif. Entité dont l'état est le type de jour du contrat (Tempo : sensor.rte_tempo_couleur_actuelle). Découpe les coûts par tranche dans les statistiques."
         }
       }
     },

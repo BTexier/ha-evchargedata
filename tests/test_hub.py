@@ -516,3 +516,39 @@ async def test_target_reached_once_on_a_fresh_level(hass, freezer):
     assert [c.data["title"] for c in calls] == ["Twingo at 100%"]
     assert " kWh · " in calls[0].data["message"]
     assert len(reached) == 1 and reached[0].data["target"] == 100
+
+
+async def test_session_bands_use_the_day_type_entity(hass, freezer):
+    hass.states.async_set("sensor.p", "2200", {"unit_of_measurement": "W"})
+    hass.states.async_set("binary_sensor.plug", "off")
+    hass.states.async_set("binary_sensor.hc", "on")
+    hass.states.async_set("sensor.tempo", "Bleu")
+    entry = MockConfigEntry(
+        domain="charge_board",
+        options={
+            "off_peak_price": 0.15,
+            "peak_price": 0.2,
+            "off_peak_entity": "binary_sensor.hc",
+            "day_type_entity": "sensor.tempo",
+        },
+        subentries_data=[
+            {"data": CHARGER, "subentry_type": "charger", "title": "Dé", "unique_id": None},
+            {"data": VEHICLE, "subentry_type": "vehicle", "title": "Twingo", "unique_id": None},
+        ],
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    hass.states.async_set("binary_sensor.plug", "on")
+    await hass.async_block_till_done()
+    await _run(hass, freezer, 900)
+    hass.states.async_set("sensor.tempo", "Rouge")
+    hass.states.async_set("binary_sensor.hc", "off")
+    await _run(hass, freezer, 900)
+    hass.states.async_set("sensor.p", "0", {"unit_of_measurement": "W"})
+    freezer.tick(5)
+    hass.states.async_set("binary_sensor.plug", "off")
+    await hass.async_block_till_done()
+    s = entry.runtime_data.store.sessions[0]
+    assert set(s.bands) == {"Bleu|hc", "Rouge|hp"}
+    assert sum(b.kwh for b in s.bands.values()) == pytest.approx(s.energy_kwh)

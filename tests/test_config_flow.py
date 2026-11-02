@@ -153,3 +153,16 @@ async def test_vehicle_flow_accepts_odometer_fuel_and_source(hass):
     await _subentry(hass, entry, "vehicle", data)
     (sub,) = entry.subentries.values()
     assert {k: sub.data[k] for k in data} == data
+
+
+async def test_options_accept_a_day_type_entity(hass):
+    entry = MockConfigEntry(domain="charge_board")
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {"off_peak_entity": "binary_sensor.hc", "day_type_entity": "sensor.tempo"},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options["day_type_entity"] == "sensor.tempo"

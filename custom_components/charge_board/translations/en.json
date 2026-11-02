@@ -20,6 +20,7 @@
           "off_peak_price": "Off-peak price (per kWh)",
           "peak_price": "Peak price (per kWh)",
           "off_peak_entity": "Off-peak now (binary sensor)",
+          "day_type_entity": "Day type (e.g. Tempo colour)",
           "off_peak_windows": "Off-peak windows",
           "overview_style": "Overview style",
           "notify_service": "Phone to notify",
@@ -31,7 +32,8 @@
           "price_entity": "Takes precedence over the fixed prices.",
           "off_peak_windows": "For example 22:00-06:00, several separated by commas. Ignored when an off-peak binary sensor is set.",
           "notify_service": "The Home Assistant app on this phone receives plug-in, start, target reached and unplug (with the session summary) notifications. Empty: no notification; the charge_board_* events are fired anyway.",
-          "fuel_price_entity": "For example a station of the Prix Carburant integration. Takes precedence over the fixed price."
+          "fuel_price_entity": "For example a station of the Prix Carburant integration. Takes precedence over the fixed price.",
+          "day_type_entity": "Optional. Entity whose state is the contract's day type (Tempo: the current colour sensor). Splits costs by band in the statistics."
         }
       }
     },

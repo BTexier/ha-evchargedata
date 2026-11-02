@@ -75,6 +75,7 @@ OPTIONS_SCHEMA = vol.Schema(
         vol.Optional("off_peak_price"): _number("any", max_=10),
         vol.Optional("peak_price"): _number("any", max_=10),
         vol.Optional("off_peak_entity"): _entity("binary_sensor", "input_boolean"),
+        vol.Optional("day_type_entity"): _entity("sensor", "select", "input_select"),
         vol.Optional("off_peak_windows"): str,
         vol.Optional("fuel_price_entity"): _entity("sensor", "input_number"),
         vol.Optional("fuel_price"): _number("any", max_=10),

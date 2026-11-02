@@ -379,7 +379,9 @@ class Hub:
             if d.get(k)
         }
         return entities | {
-            self.options[k] for k in ("price_entity", "off_peak_entity") if self.options.get(k)
+            self.options[k]
+            for k in ("price_entity", "off_peak_entity", "day_type_entity")
+            if self.options.get(k)
         }
 
     async def async_km_by_month(
@@ -495,6 +497,7 @@ class Hub:
             plugged=self._plugged(c, get),
             price=self._price(off_peak, get),
             off_peak=off_peak,
+            day_type=self._day_type(get),
             soc=self._number(vehicle.get("soc_entity"), get=get),
             odometer=self._number(vehicle.get("odometer_entity"), get=get),
         )
@@ -552,6 +555,11 @@ class Hub:
         if self._windows:
             return in_windows(dt_util.as_local(now).time(), self._windows)
         return None
+
+    def _day_type(self, get: StateGetter | None = None) -> str | None:
+        """The contract's day type now (e.g. the Tempo colour), None when unknown."""
+        st = self._state(self.options.get("day_type_entity"), get)
+        return None if st is None else st.state
 
     def _price(self, off_peak: bool | None, get: StateGetter | None = None) -> float | None:
         o = self.options
