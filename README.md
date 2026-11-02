@@ -10,7 +10,7 @@ It does not regulate the charge: no power regulation, no solar surplus charging,
 
 ### Installation
 
-1. In HACS, add a custom repository: `https://github.com/BTexier/ha-charge-board`, category **Integration**.
+1. In HACS, add a custom repository: `https://github.com/BTexier/ha-evchargedata`, category **Integration**.
 2. Install EVChargeData and restart Home Assistant (minimum version: 2025.6.0).
 3. Go to Settings → Devices & services → Add integration → **EVChargeData**.
 
@@ -133,7 +133,7 @@ Elle ne régule pas la charge : pas de régulation de puissance, pas de charge a
 
 ### Installation
 
-1. Dans HACS, ajouter un dépôt personnalisé : `https://github.com/BTexier/ha-charge-board`, catégorie **Intégration**.
+1. Dans HACS, ajouter un dépôt personnalisé : `https://github.com/BTexier/ha-evchargedata`, catégorie **Intégration**.
 2. Installer EVChargeData et redémarrer Home Assistant (version minimale : 2025.6.0).
 3. Paramètres → Appareils et services → Ajouter une intégration → **EVChargeData**.
 
