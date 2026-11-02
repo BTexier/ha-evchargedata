@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from .const import CURVE_WINDOW_MAX_S
-from .model import CurvePoint, Session, TariffSlice
+from .model import CurvePoint, Session, TariffSlice, band_key
 
 
 def _add(a: float | None, b: float | None) -> float | None:
@@ -28,15 +28,20 @@ def change_vehicle(s: Session, vehicle_id: str) -> Session:
     return replace(s, vehicle_id=vehicle_id, edited=True)
 
 
+def _merge_slices(a: dict[str, TariffSlice], b: dict[str, TariffSlice]) -> dict[str, TariffSlice]:
+    out = {k: replace(v) for k, v in a.items()}
+    for k, v in b.items():
+        out[k] = _slice_add(out[k], v) if k in out else replace(v)
+    return out
+
+
 def merge_sessions(a: Session, b: Session) -> Session:
     if a.open or b.open:
         raise ValueError("cannot merge an open session")
     if a.charger_id != b.charger_id:
         raise ValueError("sessions belong to different chargers")
     old, new = sorted((a, b), key=lambda s: s.charge_start or 0.0)
-    by_price = {k: replace(v) for k, v in old.by_price.items()}
-    for k, v in new.by_price.items():
-        by_price[k] = _slice_add(by_price[k], v) if k in by_price else replace(v)
+    by_price, bands = _merge_slices(old.by_price, new.by_price), _merge_slices(old.bands, new.bands)
     return replace(
         old,
         plugged_at=old.plugged_at,
@@ -49,6 +54,7 @@ def merge_sessions(a: Session, b: Session) -> Session:
         off_peak=_slice_add(old.off_peak, new.off_peak),
         peak=_slice_add(old.peak, new.peak),
         by_price=by_price,
+        bands=bands,
         has_off_peak_source=old.has_off_peak_source and new.has_off_peak_source,
         curve=sorted((replace(p) for p in old.curve + new.curve), key=lambda p: p.t),
         estimated=old.estimated or new.estimated,
@@ -58,28 +64,36 @@ def merge_sessions(a: Session, b: Session) -> Session:
 
 def _curve_split(
     s: Session, at: float
-) -> tuple[list[CurvePoint], list[CurvePoint], dict[bool | None, list[float]]]:
-    """Cut the curve at `at`; return both halves and their energy (kWh) per off-peak flag:
-    {flag: [left, right]}."""
+) -> tuple[
+    list[CurvePoint],
+    list[CurvePoint],
+    dict[bool | None, list[float]],
+    dict[str, list[float]],
+]:
+    """Cut the curve at `at`; return both halves and their energy (kWh) per off-peak flag
+    {flag: [left, right]} and per band key {band: [left, right]}."""
     left: list[CurvePoint] = []
     right: list[CurvePoint] = []
     energy: dict[bool | None, list[float]] = {True: [0.0, 0.0], False: [0.0, 0.0], None: [0.0, 0.0]}
+    by_band: dict[str, list[float]] = {}
     for i, p in enumerate(s.curve):
         end = s.curve[i + 1].t if i + 1 < len(s.curve) else (s.charge_end or p.t)
         end = max(min(end, p.t + CURVE_WINDOW_MAX_S), p.t)
-        e = energy[p.off_peak]
+        sides = [0.0, 0.0]
         if end <= at:
             left.append(replace(p))
-            e[0] += p.w * (end - p.t) / 3.6e6
+            sides[0] = p.w * (end - p.t) / 3.6e6
         elif p.t >= at:
             right.append(replace(p))
-            e[1] += p.w * (end - p.t) / 3.6e6
+            sides[1] = p.w * (end - p.t) / 3.6e6
         else:  # straddles the cut: split proportionally
             left.append(replace(p))
             right.append(replace(p, t=at))
-            e[0] += p.w * (at - p.t) / 3.6e6
-            e[1] += p.w * (end - at) / 3.6e6
-    return left, right, energy
+            sides = [p.w * (at - p.t) / 3.6e6, p.w * (end - at) / 3.6e6]
+        for e in (energy[p.off_peak], by_band.setdefault(band_key(p.day, p.off_peak), [0.0, 0.0])):
+            e[0] += sides[0]
+            e[1] += sides[1]
+    return left, right, energy, by_band
 
 
 def _price_shares(s: Session, f_off: float, f_peak: float, r: float) -> dict[str, float]:
@@ -104,7 +118,7 @@ def split_session(s: Session, at: float, new_id: str) -> tuple[Session, Session]
         raise ValueError("cannot split an open session")
     if s.charge_start is None or s.charge_end is None or not s.charge_start < at < s.charge_end:
         raise ValueError("split point outside the charge window")
-    left, right, energy = _curve_split(s, at)
+    left, right, energy, by_band = _curve_split(s, at)
     e_left = sum(e[0] for e in energy.values())
     total = e_left + sum(e[1] for e in energy.values())
     if total > 0:
@@ -121,6 +135,17 @@ def split_session(s: Session, at: float, new_id: str) -> tuple[Session, Session]
     f_off, f_peak = left_share(True, g), left_share(False, 1 - g)
     shares = _price_shares(s, f_off, f_peak, r)
 
+    def band_share(key: str) -> float:
+        """Along the curve points of that band; without any (curve recorded before day types),
+        like its off-peak / peak part."""
+        e = by_band.get(key)
+        if e and sum(e) > 0:
+            return e[0] / sum(e)
+        part = key.rsplit("|", 1)[1]
+        return f_off if part == "hc" else f_peak if part == "hp" else r
+
+    band_shares = {k: band_share(k) for k in s.bands}
+
     def part(left_side: bool, **kw) -> dict:
         def f(x: float) -> float:
             return x if left_side else 1 - x
@@ -134,6 +159,7 @@ def split_session(s: Session, at: float, new_id: str) -> tuple[Session, Session]
             off_peak=off,
             peak=peak,
             by_price={k: _slice_scale(v, f(shares[k])) for k, v in s.by_price.items()},
+            bands={k: _slice_scale(v, f(band_shares[k])) for k, v in s.bands.items()},
             edited=True,
             **kw,
         )

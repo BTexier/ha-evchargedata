@@ -157,3 +157,64 @@ def test_split_gives_each_side_its_own_tariff_slices():
     for k in s.by_price:
         assert a.by_price[k].kwh + b.by_price[k].kwh == pytest.approx(s.by_price[k].kwh)
     assert a.cost + b.cost == pytest.approx(s.cost)
+
+
+def test_merge_adds_bands_key_by_key():
+    a = mk("a", 1000, 2000, 2.0, 0.4, bands={"Bleu|hc": TariffSlice(2.0, 0.4)})
+    b = mk(
+        "b",
+        3000,
+        4000,
+        2.0,
+        0.5,
+        bands={"Bleu|hc": TariffSlice(1.0, 0.2), "Blanc|hp": TariffSlice(1.0, 0.3)},
+    )
+    m = merge_sessions(a, b)
+    assert m.bands["Bleu|hc"].kwh == pytest.approx(3.0)
+    assert m.bands["Bleu|hc"].cost == pytest.approx(0.6)
+    assert m.bands["Blanc|hp"].kwh == pytest.approx(1.0)
+    assert a.bands["Bleu|hc"].kwh == 2.0  # inputs untouched
+
+
+def _two_colour_night(day_on_curve: bool):
+    """1 h Bleu HC at 3 kW then 1 h Blanc HP at 3 kW."""
+    h = 3600
+    curve = [
+        CurvePoint(t, 3000, t < h, ("Bleu" if t < h else "Blanc") if day_on_curve else None)
+        for t in range(0, 2 * h, 300)
+    ]
+    return Session(
+        id="a",
+        charger_id="c1",
+        charge_start=0,
+        charge_end=2 * h,
+        charging_s=2 * h,
+        energy_kwh=6.0,
+        cost=3 * 0.1 + 3 * 0.2,
+        off_peak=TariffSlice(3.0, 0.3),
+        peak=TariffSlice(3.0, 0.6),
+        by_price={"0.1000": TariffSlice(3.0, 0.3), "0.2000": TariffSlice(3.0, 0.6)},
+        bands={"Bleu|hc": TariffSlice(3.0, 0.3), "Blanc|hp": TariffSlice(3.0, 0.6)},
+        has_off_peak_source=True,
+        curve=curve,
+    )
+
+
+def test_split_follows_the_curve_days():
+    s = _two_colour_night(day_on_curve=True)
+    a, b = split_session(s, 3600, "n")
+    assert a.bands["Bleu|hc"].kwh == pytest.approx(3.0)
+    assert a.bands["Blanc|hp"].kwh == pytest.approx(0)
+    assert b.bands["Blanc|hp"].cost == pytest.approx(0.6)
+    assert b.bands["Bleu|hc"].kwh == pytest.approx(0)
+    for k in s.bands:
+        assert a.bands[k].kwh + b.bands[k].kwh == pytest.approx(s.bands[k].kwh)
+
+
+def test_split_without_curve_days_follows_the_off_peak_parts():
+    s = _two_colour_night(day_on_curve=False)
+    a, b = split_session(s, 1800, "n")  # half of the HC hour
+    assert a.bands["Bleu|hc"].kwh == pytest.approx(1.5)
+    assert a.bands["Blanc|hp"].kwh == pytest.approx(0)
+    assert b.bands["Bleu|hc"].cost == pytest.approx(0.15)
+    assert b.bands["Blanc|hp"].kwh == pytest.approx(3.0)
