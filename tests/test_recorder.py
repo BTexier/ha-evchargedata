@@ -187,3 +187,76 @@ async def test_stats_pairs_the_partial_month_with_real_statistics(hass, hass_ws_
     october = (await ws.receive_json())["result"]["rows"][9]
     assert october["km_partial"] is True
     assert october["km"] == pytest.approx(239 - (3 * 24 + 16), abs=1)  # from the first charge
+
+
+async def test_rebuild_fills_day_types_then_the_default(hass, freezer):
+    from custom_components.charge_board.model import CurvePoint, Session, TariffSlice
+
+    t0 = datetime(2026, 10, 20, 18, tzinfo=UTC)
+    freezer.move_to(t0)
+    hass.states.async_set("sensor.tempo", "Bleu")
+    hass.states.async_set("sensor.p", "0", {"unit_of_measurement": "W"})
+    await hass.async_block_till_done()
+    await async_wait_recording_done(hass)
+    freezer.move_to(t0 + timedelta(hours=3))
+
+    entry = MockConfigEntry(
+        domain="charge_board",
+        options={"off_peak_price": 0.2, "peak_price": 0.2, "day_type_entity": "sensor.tempo"},
+        subentries_data=[
+            {"data": CHARGER, "subentry_type": "charger", "title": "Dé", "unique_id": None},
+            {"data": VEHICLE, "subentry_type": "vehicle", "title": "Twingo", "unique_id": None},
+        ],
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    hub = entry.runtime_data
+    cid = next(iter(hub.chargers))
+
+    def recorded(sid, start, **kw):
+        return Session(
+            id=sid,
+            charger_id=cid,
+            charge_start=start,
+            charge_end=start + 3600,
+            energy_kwh=2.0,
+            cost=0.4,
+            off_peak=TariffSlice(0.0, 0.0),
+            peak=TariffSlice(2.0, 0.4),
+            curve=[CurvePoint(start + i * 300, 2000) for i in range(12)],
+            **kw,
+        )
+
+    inside = (t0 + timedelta(hours=1)).timestamp()
+    older = (t0 - timedelta(days=10)).timestamp()
+    for s in (
+        recorded("in", inside),
+        recorded("old", older),
+        recorded("edited", inside + 4000, edited=True),
+    ):
+        await hub.store.async_add(s)
+
+    result = await hass.services.async_call(
+        "charge_board",
+        "rebuild_history",
+        {"start": t0.isoformat(), "default_day_type": "Rouge"},
+        blocking=True,
+        return_response=True,
+    )
+    by_id = {s.id: s for s in hub.store.sessions}
+    assert set(by_id["in"].bands) == {"Bleu|"}
+    assert set(by_id["edited"].bands) == {"Bleu|"}
+    assert set(by_id["old"].bands) == {"Rouge|"}
+    assert all(s.energy_kwh == 2.0 and s.cost == 0.4 for s in by_id.values())
+    assert result["completed"] == 3
+
+    again = await hass.services.async_call(
+        "charge_board",
+        "rebuild_history",
+        {"start": t0.isoformat(), "default_day_type": "Blanc"},
+        blocking=True,
+        return_response=True,
+    )
+    assert again["completed"] == 0
+    assert set(hub.store.sessions[0].bands) <= {"Bleu|", "Rouge|"}

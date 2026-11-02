@@ -34,7 +34,7 @@ from .const import (
 from .model import Session
 from .notifications import plugged_text, reached_text, started_text, summary_text
 from .panel import URL_PATH
-from .rebuild import enrich, merge_rebuilt
+from .rebuild import apply_default_day, assign_day_types, enrich, merge_rebuilt
 from .store import SessionStore
 from .target import should_cut
 from .tracker import Sample, SessionTracker, TrackerEvent, TrackerSettings
@@ -312,11 +312,15 @@ class Hub:
         except Exception as err:  # noqa: BLE001 - a notification must never break recording
             LOGGER.warning("EVChargeData could not notify %s: %s", service, err)
 
-    async def async_rebuild_history(self, start: datetime | None = None) -> dict[str, int]:
+    async def async_rebuild_history(
+        self, start: datetime | None = None, default_day_type: str | None = None
+    ) -> dict[str, int]:
         """Replay the recorder's history through fresh trackers and keep the sessions found.
 
         Defaults to everything the recorder still has (its purge_keep_days). See
-        rebuild.merge_rebuilt for what is added or replaced.
+        rebuild.merge_rebuilt for what is added or replaced. Recorded sessions (edited ones
+        too: only a label is added) get their day types from the history, then
+        `default_day_type` when they still have none.
         """
         now = dt_util.utcnow()
         recorder = get_instance(self.hass)
@@ -345,7 +349,7 @@ class Hub:
 
         removed: list[str] = []
         added: list[Session] = []
-        enriched = 0
+        completed: set[str] = set()
         fuel_l100 = {vid: v.get("fuel_l100") for vid, v in self.vehicles.items()}
         for cid, live in self.trackers.items():
             tracker = SessionTracker(cid, live.settings, _new_id)
@@ -364,11 +368,16 @@ class Hub:
             removed += gone
             added += new
             kept = [s for s in recorded if s.id not in gone and not s.edited]
-            enriched += len(enrich(kept, rebuilt, self.fuel_price(), fuel_l100))
+            completed |= {s.id for s in enrich(kept, rebuilt, self.fuel_price(), fuel_l100)}
             enrich(new, rebuilt, self.fuel_price(), fuel_l100)
-        if removed or added or enriched:
+            for s in [s for s in recorded if s.id not in gone]:
+                if assign_day_types(s, lambda t: self._day_type(at(t))):
+                    completed.add(s.id)
+                if default_day_type and apply_default_day(s, default_day_type):
+                    completed.add(s.id)
+        if removed or added or completed:
             await self.store.async_replace(removed, added)
-        return {"added": len(added), "replaced": len(removed), "completed": enriched}
+        return {"added": len(added), "replaced": len(removed), "completed": len(completed)}
 
     def _watched_entities(self) -> set[str]:
         keys = ("power_entity", "energy_entity", "plug_entity", "soc_entity", "odometer_entity")

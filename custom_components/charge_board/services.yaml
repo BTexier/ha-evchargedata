@@ -3,3 +3,7 @@ rebuild_history:
     start:
       selector:
         datetime:
+    default_day_type:
+      example: Bleu
+      selector:
+        text:

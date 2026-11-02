@@ -195,6 +195,10 @@
         "start": {
           "name": "Start",
           "description": "Replay from this time (default: the oldest history kept)."
+        },
+        "default_day_type": {
+          "name": "Default day type",
+          "description": "Given to sessions that still have none after reading the history (e.g. Bleu). A session that already has a day type is never changed."
         }
       }
     }

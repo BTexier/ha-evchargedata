@@ -195,6 +195,10 @@
         "start": {
           "name": "Début",
           "description": "Rejouer à partir de ce moment (par défaut : l'historique le plus ancien conservé)."
+        },
+        "default_day_type": {
+          "name": "Type de jour par défaut",
+          "description": "Appliqué aux sessions qui n'en ont toujours pas après lecture de l'historique (ex. Bleu). Une session qui a déjà un type de jour n'est jamais modifiée."
         }
       }
     }

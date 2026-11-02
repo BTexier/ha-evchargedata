@@ -47,12 +47,16 @@ def _async_register_services(hass: HomeAssistant) -> None:
         entries = hass.config_entries.async_loaded_entries(DOMAIN)
         if not entries:
             return {"added": 0, "replaced": 0, "completed": 0}
-        return await entries[0].runtime_data.async_rebuild_history(call.data.get("start"))
+        return await entries[0].runtime_data.async_rebuild_history(
+            call.data.get("start"), call.data.get("default_day_type")
+        )
 
     hass.services.async_register(
         DOMAIN,
         "rebuild_history",
         rebuild,
-        schema=vol.Schema({vol.Optional("start"): cv.datetime}),
+        schema=vol.Schema(
+            {vol.Optional("start"): cv.datetime, vol.Optional("default_day_type"): cv.string}
+        ),
         supports_response=SupportsResponse.OPTIONAL,
     )

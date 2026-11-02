@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from .model import Session
+from collections.abc import Callable
+
+from .const import CURVE_WINDOW_MAX_S
+from .model import Session, TariffSlice, band_key
 
 # A rebuilt session replaces recorded ones only if it holds clearly more energy.
 REPLACE_MARGIN_KWH = 0.1
@@ -73,3 +76,59 @@ def enrich(
         if (s.odometer_start, s.odometer_end, s.fuel_price, s.fuel_l100) != before:
             changed.append(s)
     return changed
+
+
+def _has_day(s: Session) -> bool:
+    return any(not k.startswith("|") for k in s.bands)
+
+
+def _parts(s: Session) -> dict[bool | None, TariffSlice]:
+    """The session's off-peak / peak slices, or its whole energy without an off-peak source."""
+    if s.has_off_peak_source:
+        return {True: s.off_peak, False: s.peak}
+    return {None: TariffSlice(s.energy_kwh, s.cost)}
+
+
+def assign_day_types(s: Session, day_at: Callable[[float], str | None]) -> bool:
+    """Give a session without day types its bands from the day type at each curve point
+    (energy-weighted, within its off-peak / peak part); totals unchanged. True when changed."""
+    if _has_day(s):
+        return False
+    days = [day_at(p.t) for p in s.curve]
+    if all(d is None for d in days):
+        return False
+    weights: dict[tuple[bool | None, str | None], float] = {}
+    for i, p in enumerate(s.curve):
+        end = s.curve[i + 1].t if i + 1 < len(s.curve) else (s.charge_end or p.t)
+        e = p.w * max(min(end, p.t + CURVE_WINDOW_MAX_S) - p.t, 0) / 3.6e6
+        flag = p.off_peak if s.has_off_peak_source else None
+        weights[(flag, days[i])] = weights.get((flag, days[i]), 0.0) + e
+    bands: dict[str, TariffSlice] = {}
+    for flag, part in _parts(s).items():
+        mine = {d: w for (f, d), w in weights.items() if f == flag and w > 0}
+        total = sum(mine.values())
+        for day, w in mine.items() if total > 0 else [(None, 1.0)]:
+            r = w / total if total > 0 else 1.0
+            if part.kwh * r > 0:
+                cost = None if part.cost is None else part.cost * r
+                bands[band_key(day, flag)] = TariffSlice(part.kwh * r, cost)
+    s.bands = bands
+    for p, day in zip(s.curve, days, strict=True):
+        if p.day is None:
+            p.day = day
+    return True
+
+
+def apply_default_day(s: Session, day: str) -> bool:
+    """Sessions still without a day type get `day` for all their energy (idempotent)."""
+    if _has_day(s):
+        return False
+    s.bands = {
+        band_key(day, flag): TariffSlice(part.kwh, part.cost)
+        for flag, part in _parts(s).items()
+        if part.kwh > 0
+    }
+    for p in s.curve:
+        if p.day is None:
+            p.day = day
+    return True
