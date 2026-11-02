@@ -16,7 +16,13 @@ from .const import DOMAIN, SIGNAL_LIVE, SIGNAL_UPDATED
 from .estimate import estimate_end
 from .hub import Hub
 from .model import Session
-from .stats import MIN_KM_FOR_CONSUMPTION, consumption_since, month_rows, total_row
+from .stats import (
+    MIN_KM_FOR_CONSUMPTION,
+    consumption_since,
+    month_rows,
+    period_row,
+    total_row,
+)
 
 
 def _hub(hass: HomeAssistant) -> Hub | None:
@@ -243,8 +249,47 @@ async def stats(hub: Hub, msg: dict) -> dict:
     rows = month_rows(found, months, km, dt_util.get_default_time_zone(), partial)
     if vid:
         await _pair_partial(hub, vid, rows, found)
-    now = _local_month(dt_util.utcnow().timestamp())
-    return {"currency": hub.hass.config.currency, "rows": rows, "total": total_row(rows, now)}
+    t = dt_util.utcnow().timestamp()
+    rolling = {
+        "current": await _rolling(hub, vid, found, t - ROLLING_S, t),
+        "previous": await _rolling(hub, vid, found, t - 2 * ROLLING_S, t - ROLLING_S),
+    }
+    return {
+        "currency": hub.hass.config.currency,
+        "rows": rows,
+        "total": total_row(rows, _local_month(t)),
+        "rolling": rolling,
+    }
+
+
+ROLLING_S = 30 * 86400
+RATIOS = ("cost_per_100km", "fuel_cost", "savings", "fuel_price", "fuel_l100")
+
+
+async def _rolling(
+    hub: Hub, vid: str | None, sessions: list[Session], start: float, end: float
+) -> dict:
+    """The figures of the charges started in [start, end), whatever the year shown.
+
+    km for one vehicle only, paired like the odometer's first month (_pair_partial): when its
+    tracking began after `start` and before the first charge, from that charge, the ratios on
+    the charges after it; sessions, energy and cost stay what was charged in the window.
+    """
+    inside = [s for s in sessions if start <= _start(s) < end]
+    row = period_row(inside, None)
+    if not vid:
+        return row
+    km, covered = await hub.async_km_between(vid, start, end)
+    first = _first_start(sessions)
+    if first is not None and covered < first < end:
+        km, covered = await hub.async_km_between(vid, first, end)
+        paired = [s for s in inside if _start(s) > covered]
+    else:
+        paired = [s for s in inside if _start(s) >= covered]
+    ratios = period_row(paired, km)
+    row["km"] = km
+    row.update({k: ratios[k] for k in RATIOS})
+    return row
 
 
 def _last_months(now: float, n: int = 12) -> list[str]:
@@ -367,7 +412,7 @@ async def _pair_partial(hub: Hub, vid: str, rows: list[dict], sessions: list[Ses
         after = [s for s in sessions if _start(s) > first]
         paired = month_rows(after, [row["month"]], {row["month"]: km}, tz)[0]
         row["km"] = km
-        for key in ("cost_per_100km", "fuel_cost", "savings", "fuel_price", "fuel_l100"):
+        for key in RATIOS:
             row[key] = paired[key]
         row["paired_energy_kwh"] = paired["energy_kwh"]
 

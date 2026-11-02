@@ -49,7 +49,7 @@ def _band_cost(sessions: list[Session]) -> dict[str, float]:
     return out
 
 
-def _row(month: str, sessions: list[Session], km: float | None) -> dict:
+def _row(month: str | None, sessions: list[Session], km: float | None) -> dict:
     priced = [s for s in sessions if s.cost is not None]
     sourced = [s for s in sessions if s.has_off_peak_source]
     sourced_kwh = sum(s.energy_kwh for s in sourced)
@@ -71,6 +71,11 @@ def _row(month: str, sessions: list[Session], km: float | None) -> dict:
     }
     _ratios(row)
     return row
+
+
+def period_row(sessions: list[Session], km: float | None) -> dict:
+    """The figures of a month row for any set of sessions (e.g. the last 30 days)."""
+    return {**_row(None, sessions, km), "km_partial": False}
 
 
 def month_rows(

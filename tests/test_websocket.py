@@ -323,3 +323,67 @@ async def test_partial_month_pairs_km_with_the_charges_after_the_first(env, monk
     assert october["km"] == 443.0
     assert october["energy_kwh"] == pytest.approx(73.0)  # what was charged in the month
     assert october["cost_per_100km"] == pytest.approx(10.04 / 443 * 100)
+
+
+async def test_stats_rolling_30_days_whatever_the_year(env):
+    hub, _cid, vid, ws = env
+    now = dt_util.utcnow().timestamp()
+    day = 86400
+    await put(
+        hub,
+        sess("a", now - 5 * day, kwh=10, cost=1.4, vehicle_id=vid),
+        sess("b", now - 20 * day, kwh=5, cost=0.7, vehicle_id=vid),
+        sess("c", now - 40 * day, kwh=8, cost=2.0, vehicle_id=vid),
+        sess("d", now - 70 * day, kwh=8, cost=2.0, vehicle_id=vid),
+    )
+    await ws.send_json({"id": 1, "type": "charge_board/stats", "year": 2020})
+    rolling = (await ws.receive_json())["result"]["rolling"]
+    cur, prev = rolling["current"], rolling["previous"]
+    assert (cur["sessions"], cur["energy_kwh"], cur["cost"]) == (2, 15, pytest.approx(2.1))
+    assert (prev["sessions"], prev["cost"]) == (1, pytest.approx(2.0))
+    assert cur["km"] is None and cur["cost_per_100km"] is None  # all vehicles: no km
+
+
+async def test_stats_rolling_km_for_one_vehicle(env, monkeypatch):
+    hub, _cid, vid, ws = env
+    now = dt_util.utcnow().timestamp()
+
+    async def km_between(vehicle_id, start, end):
+        return 300.0, start
+
+    monkeypatch.setattr(hub, "async_km_between", km_between)
+    await put(
+        hub,
+        sess("old", now - 50 * 86400, kwh=1, cost=0.1, vehicle_id=vid),
+        sess("a", now - 5 * 86400, kwh=10, cost=1.4, vehicle_id=vid),
+    )
+    await ws.send_json({"id": 1, "type": "charge_board/stats", "year": 2026, "vehicle_id": vid})
+    cur = (await ws.receive_json())["result"]["rolling"]["current"]
+    assert cur["km"] == 300.0
+    assert cur["cost_per_100km"] == pytest.approx(1.4 / 300 * 100)
+
+
+async def test_stats_rolling_pairs_km_after_the_first_charge(env, monkeypatch):
+    """Odometer tracked for 10 days, first charge 8 days ago: km from that charge, the ratios
+    on the charges after it; cost stays what was charged in the 30 days."""
+    hub, _cid, vid, ws = env
+    now = dt_util.utcnow().timestamp()
+    first = now - 8 * 86400
+    calls = []
+
+    async def km_between(vehicle_id, start, end):
+        calls.append(start)
+        return (200.0, start) if start == first else (260.0, now - 10 * 86400)
+
+    monkeypatch.setattr(hub, "async_km_between", km_between)
+    await put(
+        hub,
+        sess("a", first, kwh=1, cost=0.2, vehicle_id=vid),
+        sess("b", now - 2 * 86400, kwh=10, cost=1.4, vehicle_id=vid),
+    )
+    await ws.send_json({"id": 1, "type": "charge_board/stats", "year": 2026, "vehicle_id": vid})
+    cur = (await ws.receive_json())["result"]["rolling"]["current"]
+    assert first in calls
+    assert cur["km"] == 200.0
+    assert cur["cost"] == pytest.approx(1.6)
+    assert cur["cost_per_100km"] == pytest.approx(1.4 / 200 * 100)
