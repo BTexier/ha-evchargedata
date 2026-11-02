@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from custom_components.charge_board.model import Session, TariffSlice
-from custom_components.charge_board.stats import month_rows, total_row
+from custom_components.charge_board.stats import month_rows, session_bands, total_row
 
 PARIS = ZoneInfo("Europe/Paris")
 
@@ -140,3 +140,31 @@ def test_total_km_ignores_months_before_any_charge_or_odometer():
         PARIS,
     )
     assert total_row(rows, until="2026-10")["km"] == pytest.approx(200.0)
+
+
+def test_month_band_costs_sum_to_the_month_cost():
+    a = s(OCT_10, bands={"Bleu|hc": TariffSlice(9.0, 1.26), "Bleu|hp": TariffSlice(1.0, 0.14)})
+    b = s(OCT_20, bands={"Rouge|hp": TariffSlice(10.0, 1.4)})
+    (row,) = month_rows([a, b], ["2026-10"], {}, PARIS)
+    assert row["band_cost"] == pytest.approx({"Bleu|hc": 1.26, "Bleu|hp": 0.14, "Rouge|hp": 1.4})
+    assert sum(row["band_cost"].values()) == pytest.approx(row["cost"])
+
+
+def test_legacy_session_bands_come_from_off_peak_and_peak():
+    legacy = s(OCT_10)  # recorded before 0.6.0: no bands
+    assert {k: v.cost for k, v in session_bands(legacy).items()} == pytest.approx(
+        {"|hc": 1.26, "|hp": 0.14}
+    )
+    base = s(OCT_10)
+    base.has_off_peak_source = False
+    assert {k: v.cost for k, v in session_bands(base).items()} == pytest.approx({"|": 1.4})
+
+
+def test_unpriced_sessions_add_no_band_cost():
+    (row,) = month_rows([s(OCT_10, cost=None)], ["2026-10"], {}, PARIS)
+    assert row["band_cost"] == {}
+
+
+def test_total_row_sums_band_costs():
+    rows = month_rows([s(OCT_10), s(ts(2026, 11, 3, 22))], ["2026-10", "2026-11"], {}, PARIS)
+    assert total_row(rows)["band_cost"] == pytest.approx({"|hc": 2.52, "|hp": 0.28})

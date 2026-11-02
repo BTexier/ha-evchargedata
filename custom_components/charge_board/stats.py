@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, tzinfo
 
-from .model import Session
+from .model import Session, TariffSlice, band_key
 
 
 def local_month(t: float, tz: tzinfo) -> str:
@@ -32,6 +32,27 @@ def _ratios(row: dict) -> None:
     row["savings"] = fuel - cost if fuel is not None and cost is not None else None
 
 
+def session_bands(s: Session) -> dict[str, TariffSlice]:
+    """The session's tariff bands; sessions recorded before them: their off-peak / peak slices
+    (or the whole energy without an off-peak source)."""
+    if s.bands:
+        return s.bands
+    if not s.has_off_peak_source:
+        return {band_key(None, None): TariffSlice(s.energy_kwh, s.cost)}
+    return {band_key(None, True): s.off_peak, band_key(None, False): s.peak}
+
+
+def _band_cost(sessions: list[Session]) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for s in sessions:
+        if s.cost is None:
+            continue
+        for k, b in session_bands(s).items():
+            if b.cost:
+                out[k] = out.get(k, 0.0) + b.cost
+    return out
+
+
 def _row(month: str, sessions: list[Session], km: float | None) -> dict:
     priced = [s for s in sessions if s.cost is not None]
     sourced = [s for s in sessions if s.has_off_peak_source]
@@ -47,6 +68,7 @@ def _row(month: str, sessions: list[Session], km: float | None) -> dict:
         ),
         "off_peak_cost": sum(s.off_peak.cost or 0.0 for s in priced),
         "peak_cost": sum(s.peak.cost or 0.0 for s in priced),
+        "band_cost": _band_cost(sessions),
         "km": km,
         "fuel_price": _weighted(sessions, "fuel_price"),
         "fuel_l100": _weighted(sessions, "fuel_l100"),
@@ -108,6 +130,10 @@ def total_row(rows: list[dict], until: str | None = None) -> dict:
         ),
         "off_peak_cost": sum(r["off_peak_cost"] for r in rows),
         "peak_cost": sum(r["peak_cost"] for r in rows),
+        "band_cost": {
+            k: sum(r["band_cost"].get(k, 0.0) for r in rows)
+            for k in {k for r in rows for k in r["band_cost"]}
+        },
         "km": (
             sum(r["km"] for r in tracked)
             if tracked and all(r["km"] is not None for r in tracked)
