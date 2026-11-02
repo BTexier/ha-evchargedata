@@ -16,6 +16,7 @@ class CurvePoint:
     t: float  # Unix seconds, start of the averaging window
     w: float  # mean power over the window
     off_peak: bool | None = None  # tariff at the window start; None = unknown
+    day: str | None = None  # day type at the window start (e.g. Tempo colour); None = unknown
 
 
 @dataclass
@@ -33,6 +34,7 @@ class Session:
     off_peak: TariffSlice = field(default_factory=TariffSlice)
     peak: TariffSlice = field(default_factory=TariffSlice)
     by_price: dict[str, TariffSlice] = field(default_factory=dict)  # "0.1356" or "none"
+    bands: dict[str, TariffSlice] = field(default_factory=dict)  # band_key -> slice
     has_off_peak_source: bool = False
     soc_start: float | None = None
     soc_end: float | None = None
@@ -54,13 +56,17 @@ class Session:
         for k in ("off_peak", "peak"):
             if k in d:
                 d[k] = TariffSlice(**_known(TariffSlice, d[k]))
-        if "by_price" in d:
-            d["by_price"] = {
-                k: TariffSlice(**_known(TariffSlice, v)) for k, v in d["by_price"].items()
-            }
+        for k in ("by_price", "bands"):
+            if k in d:
+                d[k] = {b: TariffSlice(**_known(TariffSlice, v)) for b, v in d[k].items()}
         if "curve" in d:
             d["curve"] = [CurvePoint(**_known(CurvePoint, p)) for p in d["curve"]]
         return cls(**d)
+
+
+def band_key(day: str | None, off_peak: bool | None) -> str:
+    """Tariff band: day type (e.g. Tempo colour) x off-peak / peak, each part optional."""
+    return f"{day or ''}|{'hc' if off_peak else 'hp' if off_peak is False else ''}"
 
 
 def _known(cls: type, d: dict) -> dict:

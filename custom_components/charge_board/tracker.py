@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 
 from .const import CURVE_STEP_S, MAX_CHARGER_W, MIN_SESSION_KWH, STARTED_MIN_S, TICK_SECONDS
-from .model import CurvePoint, Session, TariffSlice
+from .model import CurvePoint, Session, TariffSlice, band_key
 
 
 @dataclass
@@ -21,6 +21,7 @@ class Sample:
     off_peak: bool | None = None
     soc: float | None = None
     odometer: float | None = None
+    day_type: str | None = None  # e.g. the Tempo colour
 
 
 @dataclass
@@ -153,7 +154,7 @@ class SessionTracker:
             # Restart gap: the counter is the only truth, priced at the NEW sample.
             sess.estimated = True
             price = b.price if b.price is not None else self._price
-            self._credit(sess, self._kwh(a, b, gap=True), price, b.off_peak)
+            self._credit(sess, self._kwh(a, b, gap=True), price, b.off_peak, b.day_type)
             return
         kwh = self._kwh(a, b, gap=False)
         if charging:
@@ -168,14 +169,15 @@ class SessionTracker:
             # Curve: a point per window of >= curve_step_s, starting at a sample time.
             # Intervals of an open session are contiguous: the window's elapsed time is a.t - p.t.
             if not sess.curve or a.t >= sess.curve[-1].t + s.curve_step_s:
-                sess.curve.append(CurvePoint(a.t, 0.0, a.off_peak))
+                sess.curve.append(CurvePoint(a.t, 0.0, a.off_peak, a.day_type))
             p = sess.curve[-1]
             p.w = (p.w * (a.t - p.t) + kwh * 3_600_000) / (b.t - p.t)
         # Price and slice of the start sample (_price already includes a.price); when it
         # knew nothing (entities not loaded yet), those of the end sample.
         price = self._price if a.price is not None or b.price is None else b.price
         off_peak = a.off_peak if a.off_peak is not None else b.off_peak
-        self._credit(sess, kwh, price, off_peak)
+        day = a.day_type if a.day_type is not None else b.day_type
+        self._credit(sess, kwh, price, off_peak, day)
 
     def _kwh(self, a: Sample, b: Sample, gap: bool) -> float:
         """Energy of the interval a -> b.
@@ -202,7 +204,12 @@ class SessionTracker:
         return 0.0 if gap else self._ref_kwh + _trapezoid(a, b)
 
     def _credit(
-        self, sess: Session, kwh: float, price: float | None, off_peak: bool | None
+        self,
+        sess: Session,
+        kwh: float,
+        price: float | None,
+        off_peak: bool | None,
+        day: str | None = None,
     ) -> None:
         if kwh <= 0:
             return
@@ -218,6 +225,7 @@ class SessionTracker:
         _add(sess.off_peak if off_peak else sess.peak, kwh, cost)
         key = "none" if price is None else f"{price:.4f}"
         _add(sess.by_price.setdefault(key, TariffSlice()), kwh, cost)
+        _add(sess.bands.setdefault(band_key(day, off_peak), TariffSlice()), kwh, cost)
 
     def _close_if_done(self, sample: Sample) -> Session | None:
         sess = self._session

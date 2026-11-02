@@ -1,4 +1,4 @@
-from custom_components.charge_board.model import CurvePoint, Session, TariffSlice
+from custom_components.charge_board.model import CurvePoint, Session, TariffSlice, band_key
 
 
 def test_round_trip():
@@ -48,3 +48,22 @@ def test_unknown_nested_keys_are_ignored():
 def test_old_session_reads_without_new_fields():
     s = Session.from_dict({"id": "x", "charger_id": "c", "energy_kwh": 3.0})
     assert (s.odometer_start, s.odometer_end, s.fuel_price, s.fuel_l100) == (None,) * 4
+
+
+def test_band_key():
+    assert band_key("Bleu", True) == "Bleu|hc"
+    assert band_key("Rouge", False) == "Rouge|hp"
+    assert band_key(None, True) == "|hc"
+    assert band_key(None, None) == "|"
+
+
+def test_bands_round_trip_and_old_sessions_load():
+    s = Session(
+        id="s",
+        charger_id="c",
+        bands={"Bleu|hc": TariffSlice(2.0, 0.27)},
+        curve=[CurvePoint(1.0, 2.0, True, "Bleu")],
+    )
+    assert Session.from_dict(s.to_dict()) == s
+    old = Session.from_dict({"id": "x", "charger_id": "c", "curve": [{"t": 1.0, "w": 2.0}]})
+    assert old.bands == {} and old.curve[0].day is None

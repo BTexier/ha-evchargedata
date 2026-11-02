@@ -516,3 +516,21 @@ def test_same_instant_reading_keeps_the_newer_states():
     assert [e.kind for e in tr.pop_events()] == ["plugged"]
     tr.feed(Sample(t=t + 30, power_w=2000, energy_kwh=None, plugged=True), "twingo")
     assert tr.current is not None and tr.current.plugged_at == t
+
+
+def night_with_day(t):
+    s = night(t)
+    if at(23) <= t < at(23, 30):
+        s.day_type = None  # colour sensor unavailable
+    else:
+        s.day_type = "Bleu" if t < at(6, 0, 1) else "Blanc"
+    return s
+
+
+def test_bands_follow_day_type_and_off_peak():
+    done = run(make_tracker(), at(21, 55), at(8, 0, 1), night_with_day)
+    s = done[0]
+    assert set(s.bands) == {"Bleu|hc", "|hc", "Blanc|hp"}
+    assert sum(b.kwh for b in s.bands.values()) == pytest.approx(s.energy_kwh)
+    assert sum(b.cost for b in s.bands.values()) == pytest.approx(s.cost)
+    assert s.curve[0].day == "Bleu"
