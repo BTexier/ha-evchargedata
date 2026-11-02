@@ -137,6 +137,7 @@ export interface Stats {
   currency: string;
   rows: StatsRow[];
   total: StatsRow;
+  rolling: { current: StatsRow; previous: StatsRow }; // last 30 days and the 30 before
 }
 
 export interface ConfigItem {

@@ -79,27 +79,37 @@ export class ChargeBoardStats extends LitElement {
           ${years.map((y) => html`<option value=${y} ?selected=${y === this._year}>${y}</option>`)}
         </select>
       </div>
-      ${this._error ? html`<p class="error">${this._t(this._error)}</p>` : nothing} ${this._head()} ${this._bars()}
+      ${this._error ? html`<p class="error">${this._t(this._error)}</p>` : nothing} ${this._rolling()} ${this._head()} ${this._bars()}
       ${this._table()}
       <div class="note">${this._t("km_note")}<br />${this._t("stats_settings_note")}</div>
     `;
   }
 
+  /** The last 30 days (whatever the year shown) against the 30 before. */
+  private _rolling() {
+    const { current, previous } = this._stats!.rolling;
+    return this._figures(this._t("last_30_days"), current, previous, "vs_prev_30");
+  }
+
   /** The current month (this year) or the year's total, with the five figures. */
   private _head() {
-    const { rows, total, currency } = this._stats!;
-    const locale = localeOf(this.hass);
+    const { rows, total } = this._stats!;
     const now = monthOf(Date.now() / 1000, this.hass.config.time_zone);
     const i = rows.findIndex((r) => r.month === now);
-    const row = i >= 0 ? rows[i] : total;
-    const prev = i > 0 ? rows[i - 1] : null;
     const title =
       i >= 0
         ? this._t("current_month", { month: this._monthName(now) })
         : this._t("total_year", { year: String(this._year) });
+    return this._figures(title, i >= 0 ? rows[i] : total, i > 0 ? rows[i - 1] : null, "vs_prev");
+  }
+
+  /** The five figures of a period; the cost compared with `prev` when it has one. */
+  private _figures(title: string, row: StatsRow, prev: StatsRow | null, vs: Key) {
+    const { currency } = this._stats!;
+    const locale = localeOf(this.hass);
     const delta =
       prev && prev.cost && row.cost != null ? html`<small class="delta ${row.cost <= prev.cost ? "good" : "bad"}"
-          >${formatDelta(row.cost / prev.cost - 1, locale)} ${this._t("vs_prev")}</small
+          >${formatDelta(row.cost / prev.cost - 1, locale)} ${this._t(vs)}</small
         >` : nothing;
     const fig = (value: unknown, label: string, sub: unknown = nothing, cls = "") =>
       html`<div class="fig"><b class=${cls}>${value}</b><span>${label}</span>${sub}</div>`;

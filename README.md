@@ -77,6 +77,7 @@ The same moments are fired as events whatever the notification settings, for you
 
 The **Statistics** tab answers what charging costs, month by month, for one vehicle (or all):
 
+- the last 30 days, whatever the year shown: the same figures, the cost compared with the 30 days before (representative even early in the month);
 - the current month: cost and change vs the previous month, energy and sessions, off-peak share, cost per 100 km, savings vs a petrol car;
 - the cost of each month, stacked by tariff band (Tempo: blue, white, red days, off-peak lighter and peak darker; without a day type: off-peak and peak); the legend lists the bands of the year shown;
 - a table of the year's months and its total.
@@ -203,6 +204,7 @@ Les mêmes moments sont émis en événements, quels que soient les réglages de
 
 L'onglet **Statistiques** dit ce que coûte la recharge, mois par mois, pour un véhicule (ou tous) :
 
+- les 30 derniers jours, quelle que soit l'année affichée : les mêmes chiffres, le coût comparé aux 30 jours précédents (représentatif même en début de mois) ;
 - le mois en cours : coût et écart avec le mois précédent, énergie et sessions, part en heures creuses, coût aux 100 km, économie par rapport à une voiture essence ;
 - le coût de chaque mois, empilé par tranche (Tempo : jours bleus, blancs, rouges, HC en clair et HP en foncé ; sans type de jour : heures creuses et pleines) ; la légende ne montre que les tranches de l'année affichée ;
 - le tableau des mois de l'année et son total.
