@@ -1,5 +1,7 @@
 // Pure geometry for the session power chart (inline SVG, no chart library).
 
+import { bandOrder } from "./bands";
+
 export interface Point {
   t: number; // Unix seconds, start of the window
   w: number; // mean power over the window
@@ -58,19 +60,27 @@ export function bandsFor(curve: Point[], end: number): { from: number; to: numbe
   return bands;
 }
 
-/** Stacked monthly bars: x and w in % of the width, heights in px of `height` (tallest = full). */
+/**
+ * Monthly bars stacked by tariff band (bandOrder, bottom-up): x and w in % of the width, y and h
+ * in px of `height` (tallest month = full height).
+ */
 export function barsFor(
-  rows: { off_peak_cost: number; peak_cost: number }[],
+  rows: { band_cost: Record<string, number> }[],
   height: number,
-): { x: number; w: number; hOff: number; hPeak: number }[] {
-  const max = Math.max(...rows.map((r) => r.off_peak_cost + r.peak_cost), 0) || 1;
+): { x: number; w: number; parts: { key: string; y: number; h: number }[] }[] {
+  const sum = (row: { band_cost: Record<string, number> }) =>
+    Object.values(row.band_cost).reduce((a, v) => a + v, 0);
+  const max = Math.max(...rows.map(sum), 0) || 1;
   const step = 100 / (rows.length || 1);
-  return rows.map((row, i) => ({
-    x: r(i * step + step * 0.15),
-    w: r(step * 0.7),
-    hOff: r((row.off_peak_cost / max) * height),
-    hPeak: r((row.peak_cost / max) * height),
-  }));
+  return rows.map((row, i) => {
+    let top = height;
+    const parts = bandOrder(Object.keys(row.band_cost).filter((k) => row.band_cost[k] > 0)).map((key) => {
+      const h = (row.band_cost[key] / max) * height;
+      top -= h;
+      return { key, y: r(top), h: r(h) };
+    });
+    return { x: r(i * step + step * 0.15), w: r(step * 0.7), parts };
+  });
 }
 
 /** Polyline of values (0..max, e.g. a battery level) over start → end. */

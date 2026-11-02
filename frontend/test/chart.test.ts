@@ -47,20 +47,21 @@ describe("chart gaps (merged sessions)", () => {
 import { barsFor, linePath } from "../src/chart";
 
 describe("bars and lines", () => {
-  it("scales stacked bars to the highest month", () => {
+  it("stacks each month's bands bottom-up in band order, tallest month = full height", () => {
     const bars = barsFor(
       [
-        { off_peak_cost: 6, peak_cost: 2 },
-        { off_peak_cost: 0, peak_cost: 0 },
-        { off_peak_cost: 2, peak_cost: 2 },
+        { band_cost: { "Bleu|hp": 2, "Bleu|hc": 6 } },
+        { band_cost: {} },
+        { band_cost: { "|hc": 2, "|hp": 2 } },
       ],
       100,
     );
     expect(bars).toHaveLength(3);
-    expect(bars[0].hOff + bars[0].hPeak).toBe(100);
-    expect(bars[0].hOff).toBe(75);
-    expect(bars[1].hOff + bars[1].hPeak).toBe(0);
-    expect(bars[2].hOff).toBe(25);
+    expect(bars[0].parts.map((p) => p.key)).toEqual(["Bleu|hc", "Bleu|hp"]);
+    expect(bars[0].parts[0]).toMatchObject({ y: 25, h: 75 });
+    expect(bars[0].parts[1]).toMatchObject({ y: 0, h: 25 });
+    expect(bars[1].parts).toEqual([]);
+    expect(bars[2].parts.reduce((a, p) => a + p.h, 0)).toBe(50);
   });
   it("draws no line without points", () => {
     expect(linePath([], 100, 50, 0, 10)).toBe("");

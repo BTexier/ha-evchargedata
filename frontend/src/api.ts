@@ -122,6 +122,7 @@ export interface StatsRow {
   off_peak_share: number | null;
   off_peak_cost: number;
   peak_cost: number;
+  band_cost: Record<string, number>; // tariff band ("Bleu|hc", "|hp", "|"…) -> cost
   km: number | null; // null: no odometer statistics for the month
   km_partial?: boolean; // km only since the odometer has been tracked (first month)
   fuel_price: number | null;

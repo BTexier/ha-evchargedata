@@ -22,6 +22,7 @@ Everything is done in the UI. The integration is a single entry; chargers and ve
 - *Price sensor (per kWh)*: takes precedence over the fixed prices.
 - *Off-peak price* / *Peak price*: two fixed prices, used with an off-peak source.
 - *Off-peak now (binary sensor)* or *Off-peak windows* (e.g. `22:00-06:00`, several separated by commas; ignored when the binary sensor is set). The off-peak source also gives the off-peak/peak split shown in the panel, even with a price sensor.
+- *Day type* (optional): an entity whose state is the contract's day type, e.g. the Tempo colour (`sensor.rte_tempo_couleur_actuelle`). Each session then records its energy and cost per **tariff band** (day type × off-peak/peak): 1 band on a Base contract, 2 with off-peak/peak, 6 with Tempo. The price still comes from the price sensor or the fixed prices; a band is never guessed from a price.
 - *Overview style*: Detailed or Compact.
 
 **Add charger**
@@ -77,7 +78,7 @@ The same moments are fired as events whatever the notification settings, for you
 The **Statistics** tab answers what charging costs, month by month, for one vehicle (or all):
 
 - the current month: cost and change vs the previous month, energy and sessions, off-peak share, cost per 100 km, savings vs a petrol car;
-- the cost of each month, off-peak and peak stacked;
+- the cost of each month, stacked by tariff band (Tempo: blue, white, red days, off-peak lighter and peak darker; without a day type: off-peak and peak); the legend lists the bands of the year shown;
 - a table of the year's months and its total.
 
 Distances come from Home Assistant's long-term statistics of the vehicle's **odometer** (vehicle setting; the sensor needs a `state_class`). The first month of these statistics only has the km driven since they began (marked *).
@@ -101,7 +102,7 @@ The cut needs both a **plug entity** and a **charging switch** on the charger; w
 
 ### Rebuild from history
 
-The action **EVChargeData: Rebuild from history** (`charge_board.rebuild_history`, optional `start`) replays Home Assistant's history (everything the recorder still keeps, 10 days by default) through the same engine as live recording. It adds the sessions that were not recorded (before the installation, or while Home Assistant was down) and replaces a session recorded only in part when the rebuilt one holds clearly more energy. Sessions corrected by hand are never touched, and running it again changes nothing. It also completes recorded sessions: the odometer read in the history, and today's petrol price and reference consumption where they were missing (no petrol price history exists). It returns how many sessions were added, replaced and completed. Rebuilt sessions are attributed to the vehicle currently selected on the charger.
+The action **EVChargeData: Rebuild from history** (`charge_board.rebuild_history`, optional `start`) replays Home Assistant's history (everything the recorder still keeps, 10 days by default) through the same engine as live recording. It adds the sessions that were not recorded (before the installation, or while Home Assistant was down) and replaces a session recorded only in part when the rebuilt one holds clearly more energy. Sessions corrected by hand are never touched, and running it again changes nothing. It also completes recorded sessions: the odometer read in the history, and today's petrol price and reference consumption where they were missing (no petrol price history exists). It returns how many sessions were added, replaced and completed. Rebuilt sessions are attributed to the vehicle currently selected on the charger. With a day type entity, recorded sessions get their tariff bands from its history; the optional `default_day_type` (e.g. `Bleu`) is given to sessions that still have none (older than the history). A session that already has a day type is never changed.
 
 ### Limits
 
@@ -121,6 +122,7 @@ The action **EVChargeData: Rebuild from history** (`charge_board.rebuild_history
 | Vehicle target | `number.twingo_niveau_de_charge_cible` |
 | Price | `sensor.tarif_actuel_tempo_6kva_ttc` (EDF Tempo) |
 | Off-peak | `binary_sensor.rte_tempo_heures_creuses` |
+| Day type | `sensor.rte_tempo_couleur_actuelle` |
 
 The charger is a dé charger driven by the `tuya_ev_charger` integration.
 
@@ -146,6 +148,7 @@ Tout se fait dans l'interface. L'intégration est une entrée unique ; chargeurs
 - *Price sensor (per kWh)* (capteur de prix) : prioritaire sur les prix fixes.
 - *Off-peak price* / *Peak price* : deux prix fixes (heures creuses / pleines), à utiliser avec une source d'heures creuses.
 - *Off-peak now (binary sensor)* ou *Off-peak windows* (plages, p. ex. `22:00-06:00`, plusieurs séparées par des virgules ; ignorées si le capteur binaire est renseigné). Cette source donne aussi la répartition HC/HP affichée, même avec un capteur de prix.
+- *Type de jour* (facultatif) : une entité dont l'état est le type de jour du contrat, par exemple la couleur Tempo (`sensor.rte_tempo_couleur_actuelle`). Chaque session enregistre alors son énergie et son coût par **tranche** (type de jour × HC/HP) : 1 tranche en Base, 2 en HP/HC, 6 en Tempo. Le prix vient toujours du capteur de prix ou des prix fixes ; une tranche n'est jamais déduite d'un prix.
 - *Overview style* : Detailed (détaillée) ou Compact (compacte).
 
 **Ajouter un chargeur**
@@ -201,7 +204,7 @@ Les mêmes moments sont émis en événements, quels que soient les réglages de
 L'onglet **Statistiques** dit ce que coûte la recharge, mois par mois, pour un véhicule (ou tous) :
 
 - le mois en cours : coût et écart avec le mois précédent, énergie et sessions, part en heures creuses, coût aux 100 km, économie par rapport à une voiture essence ;
-- le coût de chaque mois, heures creuses et pleines empilées ;
+- le coût de chaque mois, empilé par tranche (Tempo : jours bleus, blancs, rouges, HC en clair et HP en foncé ; sans type de jour : heures creuses et pleines) ; la légende ne montre que les tranches de l'année affichée ;
 - le tableau des mois de l'année et son total.
 
 Les distances viennent des statistiques long terme de Home Assistant pour le **compteur kilométrique** du véhicule (réglage du véhicule ; le capteur doit avoir un `state_class`). Le premier mois de ces statistiques n'a que les km parcourus depuis leur début (marqués *).
@@ -225,7 +228,7 @@ La coupure demande une **entité de branchement** et un **interrupteur de charge
 
 ### Reconstruire depuis l'historique
 
-L'action **EVChargeData : Reconstruire depuis l'historique** (`charge_board.rebuild_history`, `start` facultatif) rejoue l'historique de Home Assistant (tout ce que le recorder garde encore, 10 jours par défaut) dans le même moteur que l'enregistrement en direct. Elle ajoute les sessions qui n'ont pas été enregistrées (avant l'installation, ou pendant un arrêt de Home Assistant) et remplace une session enregistrée en partie quand la session reconstruite contient nettement plus d'énergie. Les sessions corrigées à la main ne sont jamais touchées, et la relancer ne change rien. Elle complète aussi les sessions enregistrées : le kilométrage lu dans l'historique, et le prix de l'essence et la consommation de référence actuels quand ils manquaient (il n'existe pas d'historique du prix de l'essence). Elle renvoie le nombre de sessions ajoutées, remplacées et complétées. Les sessions reconstruites sont attribuées au véhicule actuellement sélectionné sur le chargeur.
+L'action **EVChargeData : Reconstruire depuis l'historique** (`charge_board.rebuild_history`, `start` facultatif) rejoue l'historique de Home Assistant (tout ce que le recorder garde encore, 10 jours par défaut) dans le même moteur que l'enregistrement en direct. Elle ajoute les sessions qui n'ont pas été enregistrées (avant l'installation, ou pendant un arrêt de Home Assistant) et remplace une session enregistrée en partie quand la session reconstruite contient nettement plus d'énergie. Les sessions corrigées à la main ne sont jamais touchées, et la relancer ne change rien. Elle complète aussi les sessions enregistrées : le kilométrage lu dans l'historique, et le prix de l'essence et la consommation de référence actuels quand ils manquaient (il n'existe pas d'historique du prix de l'essence). Elle renvoie le nombre de sessions ajoutées, remplacées et complétées. Les sessions reconstruites sont attribuées au véhicule actuellement sélectionné sur le chargeur. Avec une entité type de jour, les sessions enregistrées reçoivent leurs tranches depuis son historique ; le paramètre facultatif `default_day_type` (p. ex. `Bleu`) est donné aux sessions qui n'en ont toujours pas (plus anciennes que l'historique). Une session qui a déjà un type de jour n'est jamais modifiée.
 
 ### Limites
 
@@ -245,5 +248,6 @@ L'action **EVChargeData : Reconstruire depuis l'historique** (`charge_board.rebu
 | Niveau visé | `number.twingo_niveau_de_charge_cible` |
 | Prix | `sensor.tarif_actuel_tempo_6kva_ttc` (EDF Tempo) |
 | Heures creuses | `binary_sensor.rte_tempo_heures_creuses` |
+| Type de jour | `sensor.rte_tempo_couleur_actuelle` |
 
 Le chargeur est un chargeur dé piloté par l'intégration `tuya_ev_charger`.

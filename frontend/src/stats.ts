@@ -1,5 +1,6 @@
 import { LitElement, css, html, nothing, svg, type PropertyValues } from "lit";
 import { getOverview, getStats, type HomeAssistant, type Overview, type Stats, type StatsRow } from "./api";
+import { bandColor, bandLabel, bandOrder } from "./bands";
 import { barsFor } from "./chart";
 import { DASH, formatCost, formatDelta, formatEnergy, formatPercent, monthOf } from "./format";
 import { errorKey, langOf, localeOf, t, type Key } from "./i18n";
@@ -131,15 +132,21 @@ export class ChargeBoardStats extends LitElement {
   private _bars() {
     const rows = this._stats!.rows;
     const bars = barsFor(rows, BAR_HEIGHT);
+    const present = bandOrder([...new Set(bars.flatMap((b) => b.parts.map((p) => p.key)))]);
     return html`<div class="card">
       <div class="label">
-        ${this._t("cost_by_month")} · <span class="off">■</span> ${this._t("off_peak_slice")}
-        <span class="peak">■</span> ${this._t("peak_slice")}
+        ${this._t("cost_by_month")}
+        <span class="legend">
+          ${present.map(
+            (k) => html`<span><i style="background:${bandColor(k)}"></i>${bandLabel(k, (key) => this._t(key))}</span>`,
+          )}
+        </span>
       </div>
       <svg viewBox="0 0 100 ${BAR_HEIGHT}" preserveAspectRatio="none" class="bars" role="img">
-        ${bars.map(
-          (b) => svg`<rect class="peak" x=${b.x} width=${b.w} y=${BAR_HEIGHT - b.hOff - b.hPeak} height=${b.hPeak}></rect>
-            <rect class="off" x=${b.x} width=${b.w} y=${BAR_HEIGHT - b.hOff} height=${b.hOff}></rect>`,
+        ${bars.map((b) =>
+          b.parts.map(
+            (p) => svg`<rect x=${b.x} width=${b.w} y=${p.y} height=${p.h} style="fill:${bandColor(p.key)}"></rect>`,
+          ),
         )}
       </svg>
       <div class="months">${rows.map((r) => html`<span>${this._monthName(r.month!, "short")}</span>`)}</div>
@@ -188,15 +195,20 @@ export class ChargeBoardStats extends LitElement {
         height: ${BAR_HEIGHT}px;
         border-bottom: 1px solid var(--divider-color, #e0e0e0);
       }
-      rect.off,
-      span.off {
-        fill: var(--info-color, #3b82f6);
-        color: var(--info-color, #3b82f6);
+      .legend {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 4px 12px;
+        margin-left: 8px;
       }
-      rect.peak,
-      span.peak {
-        fill: var(--warning-color, #f59e0b);
-        color: var(--warning-color, #f59e0b);
+      .legend i {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        margin-right: 4px;
+        border-radius: 2px;
+        outline: 1px solid var(--divider-color, #e0e0e0);
+        vertical-align: -1px;
       }
       .months {
         display: grid;
