@@ -30,7 +30,7 @@
         "data_description": {
           "price_entity": "Prioritaire sur les prix fixes.",
           "off_peak_windows": "Par exemple 22:00-06:00, plusieurs séparées par des virgules. Ignorées si un capteur binaire heures creuses est choisi.",
-          "notify_service": "L'application Home Assistant de ce téléphone reçoit le branchement, le démarrage et le débranchement (avec le résumé de la session). Vide : aucune notification ; les événements charge_board_* sont émis quand même.",
+          "notify_service": "L'application Home Assistant de ce téléphone reçoit le branchement, le démarrage, l'objectif atteint et le débranchement (avec le résumé de la session). Vide : aucune notification ; les événements charge_board_* sont émis quand même.",
           "fuel_price_entity": "Par exemple une station de l'intégration Prix Carburant. Prioritaire sur le prix fixe."
         }
       }
@@ -156,6 +156,7 @@
       "options": {
         "plugged": "Branchement",
         "started": "Démarrage de la charge",
+        "reached": "Objectif atteint",
         "unplugged": "Débranchement (résumé)"
       }
     },

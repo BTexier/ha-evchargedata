@@ -493,3 +493,26 @@ async def test_unavailable_switch_at_unplug_is_retried(hass, freezer):
     hass.states.async_set("switch.x", "off")
     await _run(hass, freezer, 30)
     assert len(on) == 1
+
+
+async def test_target_reached_once_on_a_fresh_level(hass, freezer):
+    calls = async_mock_service(hass, "notify", "mobile_app_iphone")
+    await _notify_entry(hass, notify_service="mobile_app_iphone", notifications=["reached"])
+    reached = []
+    hass.bus.async_listen("charge_board_reached", reached.append)
+    hass.states.async_set("sensor.soc", "100")  # previous charge's level, still shown
+    freezer.tick(60)
+    hass.states.async_set("binary_sensor.plug", "on")
+    await hass.async_block_till_done()
+    await _run(hass, freezer, 300)
+    assert calls == []  # stale level: read before the charge began
+    hass.states.async_set("sensor.soc", "60")
+    await _run(hass, freezer, 300)
+    hass.states.async_set("sensor.soc", "100")
+    await _run(hass, freezer, 300)
+    hass.states.async_set("sensor.soc", "99")
+    hass.states.async_set("sensor.soc", "100")
+    await _run(hass, freezer, 300)
+    assert [c.data["title"] for c in calls] == ["Twingo at 100%"]
+    assert " kWh · " in calls[0].data["message"]
+    assert len(reached) == 1 and reached[0].data["target"] == 100

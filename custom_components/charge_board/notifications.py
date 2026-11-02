@@ -12,6 +12,8 @@ _TEXTS = {
         "level": "batterie {} %",
         "target": "objectif {} %",
         "started": "Charge démarrée",
+        "reached": "{} à {} %",
+        "reached_anon": "Objectif atteint : {} %",
         "vehicle_on": "{} sur {}",
         "unplugged": "{} débranchée",
         "unplugged_anon": "Véhicule débranché",
@@ -29,6 +31,8 @@ _TEXTS = {
         "level": "battery {}%",
         "target": "target {}%",
         "started": "Charging started",
+        "reached": "{} at {}%",
+        "reached_anon": "Target reached: {}%",
         "vehicle_on": "{} on {}",
         "unplugged": "{} unplugged",
         "unplugged_anon": "Vehicle unplugged",
@@ -83,6 +87,23 @@ def started_text(
     return t["started"], _join(who, level)
 
 
+def _cost(lang: str, cost: float | None, currency: str) -> str | None:
+    if cost is None:
+        return None
+    return f"{_num(lang, cost, 2)} {'€' if currency == 'EUR' else currency}"
+
+
+def reached_text(
+    lang: str, vehicle: str | None, soc: float, session: Session, currency: str
+) -> tuple[str, str]:
+    t = _TEXTS[lang]
+    title = (
+        t["reached"].format(vehicle, _pct(soc)) if vehicle else t["reached_anon"].format(_pct(soc))
+    )
+    s = session
+    return title, _join(f"{_num(lang, s.energy_kwh, 1)} kWh", _cost(lang, s.cost, currency))
+
+
 def summary_text(
     lang: str, charger: str, vehicle: str | None, session: Session, currency: str
 ) -> tuple[str, str]:
@@ -92,11 +113,9 @@ def summary_text(
     else:
         title = t["unplugged"].format(vehicle) if vehicle else t["unplugged_anon"]
     s = session
-    cost = None
-    if s.cost is not None:
-        cost = f"{_num(lang, s.cost, 2)} {'€' if currency == 'EUR' else currency}"
     lines = [
-        _join(f"{_num(lang, s.energy_kwh, 1)} kWh", cost) + (t["estimated"] if s.estimated else "")
+        _join(f"{_num(lang, s.energy_kwh, 1)} kWh", _cost(lang, s.cost, currency))
+        + (t["estimated"] if s.estimated else "")
     ]
     if s.has_off_peak_source and s.energy_kwh > 0:
         lines.append(t["off_peak"].format(_pct(s.off_peak.kwh / s.energy_kwh * 100)))

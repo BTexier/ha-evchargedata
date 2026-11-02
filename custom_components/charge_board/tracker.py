@@ -33,7 +33,7 @@ class TrackerSettings:
 
 @dataclass
 class TrackerEvent:
-    """A transition worth announcing: "plugged", "started" or "unplugged" (with its session)."""
+    """A transition worth announcing: "plugged", "started", "reached" or "unplugged" (with its session)."""
 
     kind: str
     t: float

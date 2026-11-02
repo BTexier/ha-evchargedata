@@ -32,7 +32,7 @@ from .const import (
     TICK_SECONDS,
 )
 from .model import Session
-from .notifications import plugged_text, started_text, summary_text
+from .notifications import plugged_text, reached_text, started_text, summary_text
 from .panel import URL_PATH
 from .rebuild import enrich, merge_rebuilt
 from .store import SessionStore
@@ -93,6 +93,7 @@ class Hub:
         self.trackers: dict[str, SessionTracker] = {}
         # EVChargeData turned the charger's switch off at a home objective (until unplug).
         self.cut: dict[str, bool] = {}
+        self.reached: dict[str, bool] = {}  # target level announced for the open session
         o = self.options
         self.priced = bool(o.get("price_entity")) or any(
             o.get(k) is not None for k in ("off_peak_price", "peak_price")
@@ -116,6 +117,7 @@ class Hub:
                 else SessionTracker(cid, settings, _new_id)
             )
             self.cut[cid] = bool((saved or {}).get("cut"))
+            self.reached[cid] = bool((saved or {}).get("reached"))
         # Also drops the states of removed chargers.
         self.store.trackers_state = {cid: self._state_of(cid) for cid in self.trackers}
 
@@ -160,6 +162,9 @@ class Hub:
             for event in tracker.pop_events():
                 announced = True
                 self._announce(cid, event)
+            if self._reached_now(cid):
+                announced = True
+                self._announce(cid, TrackerEvent("reached", sample.t))
             async_dispatcher_send(self.hass, SIGNAL_LIVE.format(cid))
         if announced:
             # Written now, not within the save delay: a crash must not announce it twice.
@@ -168,7 +173,37 @@ class Hub:
             self.store.async_save_trackers()
 
     def _state_of(self, charger_id: str) -> dict:
-        return {**self.trackers[charger_id].to_dict(), "cut": self.cut.get(charger_id, False)}
+        return {
+            **self.trackers[charger_id].to_dict(),
+            "cut": self.cut.get(charger_id, False),
+            "reached": self.reached.get(charger_id, False),
+        }
+
+    @callback
+    def _reached_now(self, charger_id: str) -> bool:
+        """True once per session, when a level read since the charge began meets the target.
+
+        The car's level arrives minutes late: the value already there at plug-in belongs to
+        the previous charge, hence a reading changed after the charge start.
+        ponytail: a HA restart resets last_changed, so a stale level at or above the target
+        just after a restart counts as fresh; keep the level's own timestamp if that shows up.
+        """
+        sess = self.trackers[charger_id].current
+        if sess is None:
+            self.reached[charger_id] = False
+            return False
+        if self.reached[charger_id]:
+            return False
+        v = self.vehicles.get(sess.vehicle_id) or {}
+        st = self._state(v.get("soc_entity"))
+        soc = self._number(v.get("soc_entity"))
+        target = self.target_for(sess.vehicle_id)
+        if None in (st, soc, target) or st.last_changed.timestamp() < sess.charge_start:
+            return False
+        if soc < target:
+            return False
+        self.reached[charger_id] = True
+        return True
 
     @callback
     def _apply_target(self, charger_id: str, sample: Sample) -> bool:
@@ -243,6 +278,11 @@ class Hub:
             target = self.target_for(vehicle_id)
             data |= {"soc": soc, "target": target}
             text = lambda: plugged_text(lang, charger, name, soc, target)
+        elif event.kind == "reached":
+            sess = self.trackers[charger_id].current
+            data |= {"soc": soc, "target": self.target_for(vehicle_id)}
+            currency = self.hass.config.currency
+            text = lambda: reached_text(lang, name, soc, sess, currency)
         elif event.kind == "started":
             sess = self.trackers[charger_id].current
             data |= {"charge_start": sess.charge_start if sess else None, "soc": soc}

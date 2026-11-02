@@ -30,7 +30,7 @@
         "data_description": {
           "price_entity": "Takes precedence over the fixed prices.",
           "off_peak_windows": "For example 22:00-06:00, several separated by commas. Ignored when an off-peak binary sensor is set.",
-          "notify_service": "The Home Assistant app on this phone receives plug-in, start and unplug (with the session summary) notifications. Empty: no notification; the charge_board_* events are fired anyway.",
+          "notify_service": "The Home Assistant app on this phone receives plug-in, start, target reached and unplug (with the session summary) notifications. Empty: no notification; the charge_board_* events are fired anyway.",
           "fuel_price_entity": "For example a station of the Prix Carburant integration. Takes precedence over the fixed price."
         }
       }
@@ -156,6 +156,7 @@
       "options": {
         "plugged": "Plugged in",
         "started": "Charging started",
+        "reached": "Target reached",
         "unplugged": "Unplugged (summary)"
       }
     },
