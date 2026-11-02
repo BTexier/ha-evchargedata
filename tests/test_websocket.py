@@ -387,3 +387,21 @@ async def test_stats_rolling_pairs_km_after_the_first_charge(env, monkeypatch):
     assert cur["km"] == 200.0
     assert cur["cost"] == pytest.approx(1.6)
     assert cur["cost_per_100km"] == pytest.approx(1.4 / 200 * 100)
+
+
+async def test_stats_rolling_without_odometer_keeps_the_petrol_reference(env, monkeypatch):
+    """No km (no odometer): the window's own petrol price and reference stay, as for a month."""
+    hub, _cid, vid, ws = env
+    now = dt_util.utcnow().timestamp()
+
+    async def km_between(vehicle_id, start, end):
+        return None, start
+
+    monkeypatch.setattr(hub, "async_km_between", km_between)
+    only = sess("a", now - 5 * 86400, kwh=10, cost=1.4, vehicle_id=vid)
+    only.fuel_price, only.fuel_l100 = 2.0, 5.7
+    await put(hub, only)  # the vehicle's first charge ever, inside the window
+    await ws.send_json({"id": 1, "type": "charge_board/stats", "year": 2026, "vehicle_id": vid})
+    cur = (await ws.receive_json())["result"]["rolling"]["current"]
+    assert (cur["fuel_price"], cur["fuel_l100"]) == (2.0, 5.7)
+    assert cur["km"] is None and cur["cost_per_100km"] is None

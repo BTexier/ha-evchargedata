@@ -252,7 +252,8 @@ async def stats(hub: Hub, msg: dict) -> dict:
     t = dt_util.utcnow().timestamp()
     rolling = {
         "current": await _rolling(hub, vid, found, t - ROLLING_S, t),
-        "previous": await _rolling(hub, vid, found, t - 2 * ROLLING_S, t - ROLLING_S),
+        # Only its cost is shown (the delta): no odometer query.
+        "previous": await _rolling(hub, None, found, t - 2 * ROLLING_S, t - ROLLING_S),
     }
     return {
         "currency": hub.hass.config.currency,
@@ -280,6 +281,8 @@ async def _rolling(
     if not vid:
         return row
     km, covered = await hub.async_km_between(vid, start, end)
+    if km is None:
+        return row  # no odometer data: the window's own petrol reference, no ratios
     first = _first_start(sessions)
     if first is not None and covered < first < end:
         km, covered = await hub.async_km_between(vid, first, end)
